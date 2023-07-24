@@ -166,6 +166,7 @@ impl eframe::App for TemplateApp {
             Plot::new("Sorting Visualizer")
                 .allow_drag(false)
                 .allow_zoom(false)
+                .allow_scroll(false)
                 .show_axes([false; 2])
                 .show_x(false)
                 .show_y(false)
