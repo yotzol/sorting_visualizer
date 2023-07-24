@@ -1,21 +1,57 @@
+use egui::plot::{Bar, BarChart, Plot};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+use rand::seq::SliceRandom;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = Math)]
+    fn random() -> f64;
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn shuffle_vec(arr: &mut [isize]) -> Vec<isize> {
+    let length = arr.len();
+
+    for i in (1..length).rev() {
+        let j: usize = (random() * (i + 1) as f64).floor() as usize;
+        arr.swap(i, j);
+    }
+
+    arr.to_vec()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn shuffle_vec(arr: &mut Vec<isize>) {
+    let mut rng = rand::thread_rng();
+    arr.shuffle(&mut rng);
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    // this how you opt-out of serialization of a member
+    algorithm: usize,
+    array_size: usize,
+    speed: f32,
     #[serde(skip)]
-    value: f32,
+    array: Vec<isize>, // has to be isize for wasm
+    dark_mode: bool,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            algorithm: 0,
+            array_size: 32,
+            speed: 5.0,
+            array: (1..=32).collect(),
+            dark_mode: true,
         }
     }
 }
@@ -45,12 +81,13 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let Self { label, value } = self;
-
-        // Examples of how to create different panels and windows.
-        // Pick whichever suits you.
-        // Tip: a good default choice is to just keep the `CentralPanel`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
+        let Self {
+            algorithm: selected,
+            array_size,
+            speed,
+            array,
+            dark_mode,
+        } = self;
 
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -65,43 +102,89 @@ impl eframe::App for TemplateApp {
         });
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.heading("Side Panel");
+            ui.heading("Sorting Algorithms");
 
+            ui.separator();
+
+            ui.radio_value(selected, 0, "Bubble Sort");
+            ui.radio_value(selected, 1, "Selection Sort");
+            ui.radio_value(selected, 2, "Insertion Sort");
+            ui.radio_value(selected, 3, "Merge Sort");
+            ui.radio_value(selected, 4, "Quick Sort");
+            ui.radio_value(selected, 5, "Heap Sort");
+
+            ui.separator();
+
+            ui.label("Array Size");
+            ui.separator();
             ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(label);
+                ui.add(egui::Slider::new(array_size, 2..=256).text(""));
+                if ui.button("Restore").clicked() {
+                    *array_size = 32;
+                }
             });
 
-            ui.add(egui::Slider::new(value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                *value += 1.0;
-            }
+            ui.separator();
+
+            ui.label("Speed");
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.add(egui::Slider::new(speed, 1.0..=10.0).text(""));
+                if ui.button("Restore").clicked() {
+                    *speed = 5.0;
+                }
+            });
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    ui.label("powered by ");
-                    ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-                    ui.label(" and ");
-                    ui.hyperlink_to(
-                        "eframe",
-                        "https://github.com/emilk/egui/tree/master/crates/eframe",
-                    );
+                    ui.label("code on ");
+                    ui.hyperlink_to("github", "https://github.com/ltsbt/sorting_visualizer");
                     ui.label(".");
                 });
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
+            // top buttons for running and randomizing
+            ui.horizontal(|ui| {
+                if ui.button("Run").clicked() {
+                    // run
+                }
+                if ui.button("Randomize").clicked() {
+                    shuffle_vec(array);
+                }
 
-            ui.heading("eframe template");
-            ui.hyperlink("https://github.com/emilk/eframe_template");
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
-            egui::warn_if_debug_build(ui);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let icon = if *dark_mode { "☀" } else { "🌙" };
+                    if ui.button(icon).clicked() {
+                        if *dark_mode {
+                            ui.ctx().set_visuals(egui::Visuals::light());
+                            *dark_mode = false;
+                        } else {
+                            ui.ctx().set_visuals(egui::Visuals::dark());
+                            *dark_mode = true;
+                        };
+                    }
+                });
+            });
+
+            let bars: Vec<Bar> = (*array
+                .iter()
+                .enumerate()
+                .map(|(i, &height)| Bar::new(i as f64, height as f64))
+                .collect::<Vec<Bar>>())
+            .to_vec();
+
+            Plot::new("Sorting Visualizer")
+                .allow_drag(false)
+                .allow_zoom(false)
+                .show_axes([false; 2])
+                .show_x(false)
+                .show_y(false)
+                .clamp_grid(true)
+                .show(ui, |plot_ui| plot_ui.bar_chart(BarChart::new(bars)))
+                .response
         });
 
         if false {
