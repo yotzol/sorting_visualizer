@@ -1,10 +1,13 @@
+use crate::algorithms;
 use egui::plot::{Bar, BarChart, Plot};
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
+// use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use rand::seq::SliceRandom;
+
+#[cfg(target_arch = "wasm32")]
+use eframe::web_sys::window;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -32,6 +35,18 @@ pub fn shuffle_vec(arr: &mut Vec<isize>) {
     arr.shuffle(&mut rng);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_time() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn get_time() -> f64 {
+    let window = window().expect("should have a Window");
+    let performance = window.performance().expect("should have a Performance");
+    performance.now()
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct TemplateApp {
@@ -41,6 +56,21 @@ pub struct TemplateApp {
     #[serde(skip)]
     array: Vec<isize>, // has to be isize for wasm
     dark_mode: bool,
+    #[serde(skip)]
+    solved: bool,
+    #[serde(skip)]
+    running: bool,
+    #[serde(skip)]
+    arr_steps: Vec<isize>,
+    #[serde(skip)]
+    arr_current_step: usize,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip)]
+    last_sort_time: std::time::Instant,
+    #[cfg(target_arch = "wasm32")]
+    #[serde(skip)]
+    last_sort_time: f64,
+    selected_bar: usize,
 }
 
 impl Default for TemplateApp {
@@ -51,6 +81,12 @@ impl Default for TemplateApp {
             speed: 5.0,
             array: (1..=32).collect(),
             dark_mode: true,
+            solved: true,
+            running: false,
+            arr_steps: Vec::new(),
+            arr_current_step: 0,
+            last_sort_time: get_time(),
+            selected_bar: 0,
         }
     }
 }
@@ -58,7 +94,17 @@ impl Default for TemplateApp {
 impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            let settings: TemplateApp =
+                eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            // set style
+            if !settings.dark_mode {
+                cc.egui_ctx.set_visuals(egui::Visuals::light());
+            }
+
+            // initialize array with type annotations
+            let mut array: Vec<isize> = (1..=settings.array_size as isize).collect();
+
+            return settings;
         }
         Default::default()
     }
@@ -68,51 +114,97 @@ impl eframe::App for TemplateApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
-
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
-            algorithm: selected,
+            algorithm,
             array_size,
             speed,
             array,
             dark_mode,
+            solved,
+            running,
+            arr_steps,
+            arr_current_step,
+            last_sort_time,
+            selected_bar,
         } = self;
 
-        #[cfg(not(target_arch = "wasm32"))]
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        _frame.close();
+        if array_size != &array.len() {
+            *array = (1..=*array_size as isize).collect();
+            if !*solved {
+                shuffle_vec(array);
+            }
+        }
+
+        if *running {
+            let now = get_time();
+            #[cfg(not(target_arch = "wasm32"))]
+            let elapsed = now.duration_since(*last_sort_time).as_secs_f64();
+            #[cfg(target_arch = "wasm32")]
+            let elapsed = now - *last_sort_time;
+
+            let speed_factor = 0.50132 * 1.9947_f32.powf(*speed);
+            let updates_per_second = *speed * speed_factor;
+            let loops_per_update = (updates_per_second / 60.0).ceil() as usize;
+
+            let mut temp_selected_bar = 0;
+            if elapsed > (1.0 / updates_per_second) as f64 {
+                for _ in 0..loops_per_update {
+                    let j = arr_steps[*arr_current_step] as usize;
+
+                    match *algorithm {
+                        0 => algorithms::bubble_sort(array, j),
+                        1 => {}
+                        _ => (),
                     }
-                });
-            });
-        });
+
+                    *last_sort_time = now;
+                    temp_selected_bar = j + 1;
+                    if *arr_current_step < arr_steps.len() - 1 {
+                        *arr_current_step += 1;
+                    } else {
+                        *running = false;
+                        *solved = true;
+                        *arr_current_step = 0;
+                    }
+                }
+                *selected_bar = temp_selected_bar;
+            }
+
+            ctx.request_repaint();
+        }
 
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.heading("Sorting Algorithms");
 
             ui.separator();
 
-            ui.radio_value(selected, 0, "Bubble Sort");
-            ui.radio_value(selected, 1, "Selection Sort");
-            ui.radio_value(selected, 2, "Insertion Sort");
-            ui.radio_value(selected, 3, "Merge Sort");
-            ui.radio_value(selected, 4, "Quick Sort");
-            ui.radio_value(selected, 5, "Heap Sort");
+            // make radio buttons disabled if running
+            ui.add_enabled_ui(!*running, |ui| {
+                ui.radio_value(algorithm, 0, "Bubble Sort");
+                ui.radio_value(algorithm, 1, "Selection Sort");
+                ui.radio_value(algorithm, 2, "Insertion Sort");
+                ui.radio_value(algorithm, 3, "Merge Sort");
+                ui.radio_value(algorithm, 4, "Quick Sort");
+                ui.radio_value(algorithm, 5, "Heap Sort");
 
-            ui.separator();
+                ui.separator();
 
-            ui.label("Array Size");
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.add(egui::Slider::new(array_size, 2..=256).text(""));
-                if ui.button("Restore").clicked() {
-                    *array_size = 32;
-                }
+                ui.label("Array Size");
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(array_size, 2..=256).text(""));
+
+                    if ui.button("Restore").clicked() {
+                        *array_size = 32;
+                        *array = (1..=*array_size as isize).collect();
+                        if !*solved {
+                            shuffle_vec(array);
+                        }
+                    }
+                });
+                ui.separator();
             });
-
-            ui.separator();
 
             ui.label("Speed");
             ui.separator();
@@ -135,14 +227,43 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Run").clicked() {
-                    // run
-                }
-                if ui.button("Randomize").clicked() {
-                    shuffle_vec(array);
-                }
+                ui.add_enabled_ui(!*running, |ui| {
+                    if ui.button("Run").clicked() && !*solved {
+                        *running = true;
+                        *selected_bar = 0;
+                        let mut new_steps = Vec::new();
+                        match *algorithm {
+                            0 => {
+                                for i in 0..array.len() - 1 {
+                                    for j in 0..array.len() - i - 1 {
+                                        new_steps.push(j as isize);
+                                    }
+                                }
+                            }
+                            _ => (),
+                        }
+
+                        *arr_steps = new_steps;
+                        *arr_current_step = 0;
+                    }
+
+                    if ui.button("Randomize").clicked() {
+                        shuffle_vec(array);
+                        *solved = false;
+                    }
+                });
+
+                ui.add_enabled_ui(*running, |ui| {
+                    if ui.button("Stop").clicked() {
+                        *running = false;
+                    }
+                });
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if ui.button("🗙").clicked() {
+                        _frame.close();
+                    }
                     let icon = if *dark_mode { "☀" } else { "🌙" };
                     if ui.button(icon).clicked() {
                         if *dark_mode {
@@ -156,12 +277,23 @@ impl eframe::App for TemplateApp {
                 });
             });
 
-            let bars: Vec<Bar> = (*array
+            let mut bars: Vec<Bar> = (*array
                 .iter()
                 .enumerate()
                 .map(|(i, &height)| Bar::new(i as f64, height as f64))
                 .collect::<Vec<Bar>>())
             .to_vec();
+
+            // set selected bar color to red
+            if *running {
+                bars[*selected_bar].fill = egui::Color32::from_rgb(255, 0, 0);
+            }
+
+            let color = if *dark_mode {
+                egui::Color32::from_rgb(255, 255, 255)
+            } else {
+                egui::Color32::from_rgb(0, 0, 0)
+            };
 
             Plot::new("Sorting Visualizer")
                 .allow_drag(false)
@@ -171,7 +303,9 @@ impl eframe::App for TemplateApp {
                 .show_x(false)
                 .show_y(false)
                 .clamp_grid(true)
-                .show(ui, |plot_ui| plot_ui.bar_chart(BarChart::new(bars)))
+                .show(ui, |plot_ui| {
+                    plot_ui.bar_chart(BarChart::new(bars).color(color))
+                })
                 .response
         });
 
