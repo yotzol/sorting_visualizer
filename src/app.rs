@@ -57,11 +57,11 @@ pub struct TemplateApp {
     array: Vec<isize>, // has to be isize for wasm
     dark_mode: bool,
     #[serde(skip)]
-    solved: bool,
+    sorted: bool,
     #[serde(skip)]
     running: bool,
     #[serde(skip)]
-    arr_steps: Vec<isize>,
+    arr_steps: Vec<Vec<isize>>,
     #[serde(skip)]
     arr_current_step: usize,
     #[cfg(not(target_arch = "wasm32"))]
@@ -70,7 +70,10 @@ pub struct TemplateApp {
     #[cfg(target_arch = "wasm32")]
     #[serde(skip)]
     last_sort_time: f64,
+    #[serde(skip)]
     selected_bar: usize,
+    #[serde(skip)]
+    green_bar: usize,
 }
 
 impl Default for TemplateApp {
@@ -81,12 +84,13 @@ impl Default for TemplateApp {
             speed: 5.0,
             array: (1..=32).collect(),
             dark_mode: true,
-            solved: true,
+            sorted: true,
             running: false,
             arr_steps: Vec::new(),
             arr_current_step: 0,
             last_sort_time: get_time(),
             selected_bar: 0,
+            green_bar: 0,
         }
     }
 }
@@ -118,17 +122,18 @@ impl eframe::App for TemplateApp {
             speed,
             array,
             dark_mode,
-            solved,
+            sorted,
             running,
             arr_steps,
             arr_current_step,
             last_sort_time,
             selected_bar,
+            green_bar,
         } = self;
 
         if array_size != &array.len() {
             *array = (1..=*array_size as isize).collect();
-            if !*solved {
+            if !*sorted {
                 shuffle_vec(array);
             }
         }
@@ -145,27 +150,51 @@ impl eframe::App for TemplateApp {
             let loops_per_update = (updates_per_second / 60.0).ceil() as usize;
 
             let mut temp_selected_bar = 0;
+            let mut temp_green_bar = 0;
             if elapsed > (1.0 / updates_per_second) as f64 {
                 for _ in 0..loops_per_update {
-                    let j = arr_steps[*arr_current_step] as usize;
-
                     match *algorithm {
-                        0 => algorithms::bubble_sort(array, j),
-                        1 => {}
+                        0 => {
+                            let j = arr_steps[*arr_current_step][0] as usize;
+                            algorithms::bubble_sort(array, j);
+                            temp_selected_bar = j + 1;
+                        }
+                        1 => {
+                            let min_idx = arr_steps[*arr_current_step][0] as usize;
+                            let j = arr_steps[*arr_current_step][1] as usize;
+
+                            if j + 1 == array.len() {
+                                temp_selected_bar = min_idx + 1;
+                            } else {
+                                temp_selected_bar = j + 1;
+                            }
+
+                            temp_green_bar = min_idx;
+
+                            if j + 1 < array.len() && array[j + 1] < array[min_idx] {
+                                temp_green_bar = j + 1;
+                                temp_selected_bar = min_idx;
+                            }
+                            algorithms::selection_sort(array, min_idx, j);
+                        }
+                        2 => {}
+                        3 => {}
+                        4 => {}
+                        5 => {}
                         _ => (),
                     }
 
                     *last_sort_time = now;
-                    temp_selected_bar = j + 1;
                     if *arr_current_step < arr_steps.len() - 1 {
                         *arr_current_step += 1;
                     } else {
                         *running = false;
-                        *solved = true;
+                        *sorted = true;
                         *arr_current_step = 0;
                     }
                 }
                 *selected_bar = temp_selected_bar;
+                *green_bar = temp_green_bar;
             }
 
             ctx.request_repaint();
@@ -179,9 +208,9 @@ impl eframe::App for TemplateApp {
             // make radio buttons disabled if running
             ui.add_enabled_ui(!*running, |ui| {
                 ui.radio_value(algorithm, 0, "Bubble Sort");
+                ui.radio_value(algorithm, 1, "Selection Sort");
 
                 ui.add_enabled_ui(false, |ui| {
-                    ui.radio_value(algorithm, 1, "Selection Sort");
                     ui.radio_value(algorithm, 2, "Insertion Sort");
                     ui.radio_value(algorithm, 3, "Merge Sort");
                     ui.radio_value(algorithm, 4, "Quick Sort");
@@ -193,12 +222,12 @@ impl eframe::App for TemplateApp {
                 ui.label("Array Size");
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(array_size, 2..=256).text(""));
+                    ui.add(egui::Slider::new(array_size, 2..=1024).text(""));
 
                     if ui.button("Restore").clicked() {
                         *array_size = 32;
                         *array = (1..=*array_size as isize).collect();
-                        if !*solved {
+                        if !*sorted {
                             shuffle_vec(array);
                         }
                     }
@@ -228,18 +257,32 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!*running, |ui| {
-                    if ui.button("Run").clicked() && !*solved {
+                    if ui.button("Run").clicked() && !*sorted {
                         *running = true;
                         *selected_bar = 0;
                         let mut new_steps = Vec::new();
                         match *algorithm {
                             0 => {
+                                // bubble sort
                                 for i in 0..array.len() - 1 {
                                     for j in 0..array.len() - i - 1 {
-                                        new_steps.push(j as isize);
+                                        new_steps.push(vec![j as isize]);
                                     }
                                 }
                             }
+                            1 => {
+                                // selection sort
+                                *green_bar = 0;
+                                for i in 0..array.len() - 1 {
+                                    for j in i..array.len() {
+                                        new_steps.push(vec![i as isize, j as isize]);
+                                    }
+                                }
+                            }
+                            2 => {}
+                            3 => {}
+                            4 => {}
+                            5 => {}
                             _ => (),
                         }
 
@@ -247,15 +290,22 @@ impl eframe::App for TemplateApp {
                         *arr_current_step = 0;
                     }
 
-                    if ui.button("Randomize").clicked() {
+                    if ui.button("Shuffle").clicked() {
                         shuffle_vec(array);
-                        *solved = false;
+                        *sorted = false;
                     }
                 });
 
                 ui.add_enabled_ui(*running, |ui| {
                     if ui.button("Stop").clicked() {
                         *running = false;
+                    }
+                });
+
+                ui.add_enabled_ui(!*sorted && !*running, |ui| {
+                    if ui.button("Clear").clicked() {
+                        *array = (1..=*array_size as isize).collect();
+                        *sorted = true;
                     }
                 });
 
@@ -284,16 +334,45 @@ impl eframe::App for TemplateApp {
                 .collect::<Vec<Bar>>())
             .to_vec();
 
-            // set selected bar color to red
-            if *running {
-                bars[*selected_bar].fill = egui::Color32::from_rgb(255, 0, 0);
+            // Colors
+            let red = egui::Color32::from_rgb(255, 0, 0);
+            let red_light = egui::Color32::from_rgb(255, 100, 100);
+            let green = egui::Color32::from_rgb(0, 255, 0);
+            let green_light = egui::Color32::from_rgb(100, 255, 100);
+            let black = egui::Color32::from_rgb(0, 0, 0);
+            let black_light = egui::Color32::from_rgb(100, 100, 100);
+            let white = egui::Color32::from_rgb(255, 255, 255);
+            let white_light = egui::Color32::from_rgb(200, 200, 200);
+
+            let stroke_width = 1.5;
+
+            for bar in bars.iter_mut() {
+                bar.fill = if *dark_mode { black_light } else { white_light };
+                bar.stroke.color = if *dark_mode { white_light } else { black };
+                bar.stroke.width = stroke_width;
             }
 
-            let color = if *dark_mode {
-                egui::Color32::from_rgb(255, 255, 255)
-            } else {
-                egui::Color32::from_rgb(0, 0, 0)
-            };
+            if *running {
+                match *algorithm {
+                    0 => {
+                        bars[*selected_bar].fill = red_light;
+                        bars[*selected_bar].stroke.color = red;
+                        bars[*selected_bar].stroke.width = stroke_width;
+                    }
+                    1 => {
+                        bars[*selected_bar].fill = red_light;
+                        bars[*selected_bar].stroke.color = red;
+                        bars[*selected_bar].stroke.width = stroke_width;
+
+                        bars[*green_bar].fill = green_light;
+                        bars[*green_bar].stroke.color = green;
+                        bars[*green_bar].stroke.width = stroke_width;
+                    }
+                    _ => (),
+                }
+            }
+
+            let chart_color = if *dark_mode { white } else { black };
 
             Plot::new("Sorting Visualizer")
                 .allow_drag(false)
@@ -304,7 +383,7 @@ impl eframe::App for TemplateApp {
                 .show_y(false)
                 .clamp_grid(true)
                 .show(ui, |plot_ui| {
-                    plot_ui.bar_chart(BarChart::new(bars).color(color))
+                    plot_ui.bar_chart(BarChart::new(bars).color(chart_color))
                 })
                 .response
         });
