@@ -5,8 +5,6 @@ use egui::plot::{Bar, BarChart, Plot};
 use rand::seq::SliceRandom;
 
 #[cfg(target_arch = "wasm32")]
-use eframe::web_sys::window;
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
@@ -14,6 +12,8 @@ use wasm_bindgen::prelude::*;
 extern "C" {
     #[wasm_bindgen(js_namespace = Math)]
     fn random() -> f64;
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    fn now() -> f64;
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -42,9 +42,7 @@ pub fn get_time() -> std::time::Instant {
 
 #[cfg(target_arch = "wasm32")]
 pub fn get_time() -> f64 {
-    let window = window().expect("should have a Window");
-    let performance = window.performance().expect("should have a Performance");
-    performance.now()
+    now()
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -141,7 +139,7 @@ impl eframe::App for TemplateApp {
         if *running {
             let now = get_time();
             #[cfg(not(target_arch = "wasm32"))]
-            let elapsed = now.duration_since(*last_sort_time).as_secs_f64();
+            let elapsed = now.duration_since(*last_sort_time).as_secs_f64() * 1000.0;
             #[cfg(target_arch = "wasm32")]
             let elapsed = now - *last_sort_time;
 
@@ -151,7 +149,7 @@ impl eframe::App for TemplateApp {
 
             let mut temp_selected_bar = 0;
             let mut temp_green_bar = 0;
-            if elapsed > (1.0 / updates_per_second) as f64 {
+            if elapsed > (1000.0 / updates_per_second) as f64 {
                 for _ in 0..loops_per_update {
                     match *algorithm {
                         0 => {
