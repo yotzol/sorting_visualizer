@@ -101,9 +101,6 @@ impl TemplateApp {
                 cc.egui_ctx.set_visuals(egui::Visuals::light());
             }
 
-            // initialize array with type annotations
-            let mut array: Vec<isize> = (1..=settings.array_size as isize).collect();
-
             return settings;
         }
         Default::default()
