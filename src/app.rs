@@ -1,6 +1,4 @@
-use crate::algorithms;
 use egui::plot::{Bar, BarChart, Plot};
-// use std::sync::{Arc, Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use rand::seq::SliceRandom;
 
@@ -98,7 +96,7 @@ impl TemplateApp {
         if let Some(storage) = cc.storage {
             let settings: TemplateApp =
                 eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-            // set style
+
             if !settings.dark_mode {
                 cc.egui_ctx.set_visuals(egui::Visuals::light());
             }
@@ -113,6 +111,7 @@ impl eframe::App for TemplateApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
             algorithm,
@@ -154,7 +153,11 @@ impl eframe::App for TemplateApp {
                     match *algorithm {
                         0 => {
                             let j = arr_steps[*arr_current_step][0] as usize;
-                            algorithms::bubble_sort(array, j);
+
+                            if array[j] > array[j + 1] {
+                                array.swap(j, j + 1);
+                            }
+
                             temp_selected_bar = j + 1;
                         }
                         1 => {
@@ -173,9 +176,16 @@ impl eframe::App for TemplateApp {
                                 temp_green_bar = j + 1;
                                 temp_selected_bar = min_idx;
                             }
-                            algorithms::selection_sort(array, min_idx, j);
+
+                            if array[j] < array[min_idx] {
+                                array.swap(min_idx, j);
+                            }
                         }
-                        2 => {}
+                        2 => {
+                            let j = arr_steps[*arr_current_step][0] as usize;
+                            array.swap(j, j - 1);
+                            temp_selected_bar = j - 1;
+                        }
                         3 => {}
                         4 => {}
                         5 => {}
@@ -189,6 +199,7 @@ impl eframe::App for TemplateApp {
                         *running = false;
                         *sorted = true;
                         *arr_current_step = 0;
+                        break;
                     }
                 }
                 *selected_bar = temp_selected_bar;
@@ -207,9 +218,9 @@ impl eframe::App for TemplateApp {
             ui.add_enabled_ui(!*running, |ui| {
                 ui.radio_value(algorithm, 0, "Bubble Sort");
                 ui.radio_value(algorithm, 1, "Selection Sort");
+                ui.radio_value(algorithm, 2, "Insertion Sort");
 
                 ui.add_enabled_ui(false, |ui| {
-                    ui.radio_value(algorithm, 2, "Insertion Sort");
                     ui.radio_value(algorithm, 3, "Merge Sort");
                     ui.radio_value(algorithm, 4, "Quick Sort");
                     ui.radio_value(algorithm, 5, "Heap Sort");
@@ -277,7 +288,19 @@ impl eframe::App for TemplateApp {
                                     }
                                 }
                             }
-                            2 => {}
+                            2 => {
+                                // insertion sort
+                                let mut arr_copy = array.clone();
+
+                                for i in 1..arr_copy.len() {
+                                    let mut j = i;
+                                    while j > 0 && arr_copy[j - 1] > arr_copy[j] {
+                                        arr_copy.swap(j, j - 1);
+                                        new_steps.push(vec![j as isize]);
+                                        j -= 1;
+                                    }
+                                }
+                            }
                             3 => {}
                             4 => {}
                             5 => {}
@@ -339,7 +362,7 @@ impl eframe::App for TemplateApp {
             let green_light = egui::Color32::from_rgb(100, 255, 100);
             let black = egui::Color32::from_rgb(0, 0, 0);
             let black_light = egui::Color32::from_rgb(100, 100, 100);
-            let white = egui::Color32::from_rgb(255, 255, 255);
+            // let white = egui::Color32::from_rgb(255, 255, 255);
             let white_light = egui::Color32::from_rgb(200, 200, 200);
 
             let stroke_width = 1.5;
@@ -352,7 +375,7 @@ impl eframe::App for TemplateApp {
 
             if *running {
                 match *algorithm {
-                    0 => {
+                    0 | 2 => {
                         bars[*selected_bar].fill = red_light;
                         bars[*selected_bar].stroke.color = red;
                         bars[*selected_bar].stroke.width = stroke_width;
@@ -370,8 +393,6 @@ impl eframe::App for TemplateApp {
                 }
             }
 
-            let chart_color = if *dark_mode { white } else { black };
-
             Plot::new("Sorting Visualizer")
                 .allow_drag(false)
                 .allow_zoom(false)
@@ -380,19 +401,8 @@ impl eframe::App for TemplateApp {
                 .show_x(false)
                 .show_y(false)
                 .clamp_grid(true)
-                .show(ui, |plot_ui| {
-                    plot_ui.bar_chart(BarChart::new(bars).color(chart_color))
-                })
+                .show(ui, |plot_ui| plot_ui.bar_chart(BarChart::new(bars)))
                 .response
         });
-
-        if false {
-            egui::Window::new("Window").show(ctx, |ui| {
-                ui.label("Windows can be moved by dragging them.");
-                ui.label("They are automatically sized based on contents.");
-                ui.label("You can turn on resizing and scrolling if you like.");
-                ui.label("You would normally choose either panels OR windows.");
-            });
-        }
     }
 }
