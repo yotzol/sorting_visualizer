@@ -1,3 +1,4 @@
+use crate::algorithms;
 use egui::plot::{Bar, BarChart, Plot};
 #[cfg(not(target_arch = "wasm32"))]
 use rand::seq::SliceRandom;
@@ -59,6 +60,8 @@ pub struct TemplateApp {
     #[serde(skip)]
     arr_steps: Vec<Vec<isize>>,
     #[serde(skip)]
+    merge_steps: Vec<algorithms::MergeStep>,
+    #[serde(skip)]
     arr_current_step: usize,
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
@@ -67,7 +70,7 @@ pub struct TemplateApp {
     #[serde(skip)]
     last_sort_time: f64,
     #[serde(skip)]
-    selected_bar: usize,
+    selected_bars: Vec<usize>,
     #[serde(skip)]
     green_bar: usize,
 }
@@ -83,9 +86,10 @@ impl Default for TemplateApp {
             sorted: true,
             running: false,
             arr_steps: Vec::new(),
+            merge_steps: Vec::new(),
             arr_current_step: 0,
             last_sort_time: get_time(),
-            selected_bar: 0,
+            selected_bars: Vec::new(),
             green_bar: 0,
         }
     }
@@ -122,9 +126,10 @@ impl eframe::App for TemplateApp {
             sorted,
             running,
             arr_steps,
+            merge_steps,
             arr_current_step,
             last_sort_time,
-            selected_bar,
+            selected_bars,
             green_bar,
         } = self;
 
@@ -146,10 +151,9 @@ impl eframe::App for TemplateApp {
             let updates_per_second = *speed * speed_factor;
             let loops_per_update = (updates_per_second / 60.0).ceil() as usize;
 
-            let mut temp_selected_bar = 0;
-            let mut temp_green_bar = 0;
             if elapsed > (1000.0 / updates_per_second) as f64 {
                 for _ in 0..loops_per_update {
+                    selected_bars.clear();
                     match *algorithm {
                         0 => {
                             let j = arr_steps[*arr_current_step][0] as usize;
@@ -158,23 +162,23 @@ impl eframe::App for TemplateApp {
                                 array.swap(j, j + 1);
                             }
 
-                            temp_selected_bar = j + 1;
+                            selected_bars.push(j + 1);
                         }
                         1 => {
                             let min_idx = arr_steps[*arr_current_step][0] as usize;
                             let j = arr_steps[*arr_current_step][1] as usize;
 
                             if j + 1 == array.len() {
-                                temp_selected_bar = min_idx + 1;
+                                selected_bars.push(min_idx + 1);
                             } else {
-                                temp_selected_bar = j + 1;
+                                selected_bars.push(j + 1);
                             }
 
-                            temp_green_bar = min_idx;
+                            *green_bar = min_idx;
 
                             if j + 1 < array.len() && array[j + 1] < array[min_idx] {
-                                temp_green_bar = j + 1;
-                                temp_selected_bar = min_idx;
+                                *green_bar = j + 1;
+                                selected_bars.push(min_idx);
                             }
 
                             if array[j] < array[min_idx] {
@@ -184,26 +188,66 @@ impl eframe::App for TemplateApp {
                         2 => {
                             let j = arr_steps[*arr_current_step][0] as usize;
                             array.swap(j, j - 1);
-                            temp_selected_bar = j - 1;
+                            selected_bars.push(j - 1);
                         }
-                        3 => {}
+                        3 => {
+                            let step = &merge_steps[*arr_current_step];
+                            match step {
+                                algorithms::MergeStep::Compare(i) => {
+                                    selected_bars.push(*i);
+                                }
+
+                                algorithms::MergeStep::Merge(start, mid, end) => {
+                                    let mut left = array[*start..=*mid].to_vec();
+                                    let mut right = array[*mid + 1..=*end].to_vec();
+                                    let mut i = 0;
+                                    let mut j = 0;
+
+                                    left.push(isize::MAX);
+                                    right.push(isize::MAX);
+
+                                    for k in *start..=*end {
+                                        if left[i] <= right[j] {
+                                            array[k] = left[i];
+                                            i += 1;
+                                        } else {
+                                            array[k] = right[j];
+                                            j += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         4 => {}
                         5 => {}
                         _ => (),
                     }
 
                     *last_sort_time = now;
-                    if *arr_current_step < arr_steps.len() - 1 {
-                        *arr_current_step += 1;
-                    } else {
-                        *running = false;
-                        *sorted = true;
-                        *arr_current_step = 0;
-                        break;
+                    match *algorithm {
+                        0 | 1 | 2 => {
+                            if *arr_current_step < arr_steps.len() - 1 {
+                                *arr_current_step += 1;
+                            } else {
+                                *running = false;
+                                *sorted = true;
+                                *arr_current_step = 0;
+                                break;
+                            }
+                        }
+                        3 => {
+                            if *arr_current_step < merge_steps.len() - 1 {
+                                *arr_current_step += 1;
+                            } else {
+                                *running = false;
+                                *sorted = true;
+                                *arr_current_step = 0;
+                                break;
+                            }
+                        }
+                        _ => (),
                     }
                 }
-                *selected_bar = temp_selected_bar;
-                *green_bar = temp_green_bar;
             }
 
             ctx.request_repaint();
@@ -216,12 +260,16 @@ impl eframe::App for TemplateApp {
 
             // make radio buttons disabled if running
             ui.add_enabled_ui(!*running, |ui| {
-                ui.radio_value(algorithm, 0, "Bubble Sort");
+                if ui.radio_value(algorithm, 0, "Bubble Sort").clicked() {
+                    if *array_size > 1024 {
+                        *array_size = 1024;
+                    }
+                }
                 ui.radio_value(algorithm, 1, "Selection Sort");
                 ui.radio_value(algorithm, 2, "Insertion Sort");
+                ui.radio_value(algorithm, 3, "Merge Sort");
 
                 ui.add_enabled_ui(false, |ui| {
-                    ui.radio_value(algorithm, 3, "Merge Sort");
                     ui.radio_value(algorithm, 4, "Quick Sort");
                     ui.radio_value(algorithm, 5, "Heap Sort");
                 });
@@ -231,7 +279,10 @@ impl eframe::App for TemplateApp {
                 ui.label("Array Size");
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(array_size, 2..=1024).text(""));
+                    ui.add(
+                        egui::Slider::new(array_size, 2..=if *algorithm < 3 { 1024 } else { 4096 })
+                            .text(""),
+                    );
 
                     if ui.button("Restore").clicked() {
                         *array_size = 32;
@@ -268,46 +319,27 @@ impl eframe::App for TemplateApp {
                 ui.add_enabled_ui(!*running, |ui| {
                     if ui.button("Run").clicked() && !*sorted {
                         *running = true;
-                        *selected_bar = 0;
+                        selected_bars.clear();
                         let mut new_steps = Vec::new();
+                        let mut new_merge_steps: Vec<algorithms::MergeStep> = Vec::new();
                         match *algorithm {
-                            0 => {
-                                // bubble sort
-                                for i in 0..array.len() - 1 {
-                                    for j in 0..array.len() - i - 1 {
-                                        new_steps.push(vec![j as isize]);
-                                    }
-                                }
-                            }
-                            1 => {
-                                // selection sort
-                                *green_bar = 0;
-                                for i in 0..array.len() - 1 {
-                                    for j in i..array.len() {
-                                        new_steps.push(vec![i as isize, j as isize]);
-                                    }
-                                }
-                            }
-                            2 => {
-                                // insertion sort
-                                let mut arr_copy = array.clone();
-
-                                for i in 1..arr_copy.len() {
-                                    let mut j = i;
-                                    while j > 0 && arr_copy[j - 1] > arr_copy[j] {
-                                        arr_copy.swap(j, j - 1);
-                                        new_steps.push(vec![j as isize]);
-                                        j -= 1;
-                                    }
-                                }
-                            }
-                            3 => {}
+                            0 => algorithms::bubble_sort(array.as_mut_slice(), &mut new_steps),
+                            1 => algorithms::selection_sort(array.as_mut_slice(), &mut new_steps),
+                            2 => algorithms::insertion_sort(array.as_mut_slice(), &mut new_steps),
+                            3 => algorithms::merge_sort(
+                                array.to_owned().as_mut_slice(),
+                                0,
+                                array.len() - 1,
+                                &mut new_merge_steps,
+                            ),
                             4 => {}
                             5 => {}
                             _ => (),
                         }
 
                         *arr_steps = new_steps;
+                        merge_steps.clear();
+                        merge_steps.extend(new_merge_steps);
                         *arr_current_step = 0;
                     }
 
@@ -374,17 +406,14 @@ impl eframe::App for TemplateApp {
             }
 
             if *running {
-                match *algorithm {
-                    0 | 2 => {
-                        bars[*selected_bar].fill = red_light;
-                        bars[*selected_bar].stroke.color = red;
-                        bars[*selected_bar].stroke.width = stroke_width;
-                    }
-                    1 => {
-                        bars[*selected_bar].fill = red_light;
-                        bars[*selected_bar].stroke.color = red;
-                        bars[*selected_bar].stroke.width = stroke_width;
+                for bar in selected_bars.iter() {
+                    bars[*bar].fill = red_light;
+                    bars[*bar].stroke.color = red;
+                    bars[*bar].stroke.width = stroke_width;
+                }
 
+                match *algorithm {
+                    1 => {
                         bars[*green_bar].fill = green_light;
                         bars[*green_bar].stroke.color = green;
                         bars[*green_bar].stroke.width = stroke_width;
