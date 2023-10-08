@@ -205,13 +205,16 @@ impl eframe::App for TemplateApp {
 
             // make radio buttons disabled if running
             ui.add_enabled_ui(!*running, |ui| {
-                if ui.radio_value(algorithm, 0, "Bubble Sort").clicked() {
-                    if *array_size > 1024 {
-                        *array_size = 1024;
-                    }
+                if ui.radio_value(algorithm, 0, "Bubble Sort").clicked() && *array_size > 1024 {
+                    *array_size = 1024;
                 }
-                ui.radio_value(algorithm, 1, "Selection Sort");
-                ui.radio_value(algorithm, 2, "Insertion Sort");
+                if ui.radio_value(algorithm, 1, "Selection Sort").clicked() && *array_size > 1024 {
+                    *array_size = 1024;
+                }
+                if ui.radio_value(algorithm, 2, "Insertion Sort").clicked() && *array_size > 1024 {
+                    *array_size = 1024;
+                }
+
                 ui.radio_value(algorithm, 3, "Merge Sort");
 
                 ui.add_enabled_ui(false, |ui| {
