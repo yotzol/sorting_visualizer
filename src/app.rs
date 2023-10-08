@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::algorithms;
 use egui::plot::{Bar, BarChart, Plot};
 #[cfg(not(target_arch = "wasm32"))]
@@ -58,11 +60,7 @@ pub struct TemplateApp {
     #[serde(skip)]
     running: bool,
     #[serde(skip)]
-    arr_steps: Vec<Vec<isize>>,
-    #[serde(skip)]
-    merge_steps: Vec<algorithms::MergeStep>,
-    #[serde(skip)]
-    arr_current_step: usize,
+    arr_steps: VecDeque<algorithms::Step>,
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
     last_sort_time: std::time::Instant,
@@ -72,7 +70,7 @@ pub struct TemplateApp {
     #[serde(skip)]
     selected_bars: Vec<usize>,
     #[serde(skip)]
-    green_bar: usize,
+    green_bars: Vec<usize>,
 }
 
 impl Default for TemplateApp {
@@ -85,12 +83,10 @@ impl Default for TemplateApp {
             dark_mode: true,
             sorted: true,
             running: false,
-            arr_steps: Vec::new(),
-            merge_steps: Vec::new(),
-            arr_current_step: 0,
+            arr_steps: VecDeque::new(),
             last_sort_time: get_time(),
             selected_bars: Vec::new(),
-            green_bar: 0,
+            green_bars: Vec::new(),
         }
     }
 }
@@ -126,11 +122,9 @@ impl eframe::App for TemplateApp {
             sorted,
             running,
             arr_steps,
-            merge_steps,
-            arr_current_step,
             last_sort_time,
             selected_bars,
-            green_bar,
+            green_bars,
         } = self;
 
         if array_size != &array.len() {
@@ -147,105 +141,56 @@ impl eframe::App for TemplateApp {
             #[cfg(target_arch = "wasm32")]
             let elapsed = now - *last_sort_time;
 
-            let speed_factor = 0.50132 * 1.9947_f32.powf(*speed);
+            let speed_factor = 0.50132 * (1.5 * 1.9947_f32).powf(*speed);
             let updates_per_second = *speed * speed_factor;
             let loops_per_update = (updates_per_second / 60.0).ceil() as usize;
 
             if elapsed > (1000.0 / updates_per_second) as f64 {
                 for _ in 0..loops_per_update {
                     selected_bars.clear();
-                    match *algorithm {
-                        0 => {
-                            let j = arr_steps[*arr_current_step][0] as usize;
+                    green_bars.clear();
 
-                            if array[j] > array[j + 1] {
-                                array.swap(j, j + 1);
-                            }
+                    let step = arr_steps.pop_front().unwrap();
 
-                            selected_bars.push(j + 1);
+                    match step {
+                        algorithms::Step::Compare(i, j) => {
+                            selected_bars.push(i);
+                            selected_bars.push(j);
                         }
-                        1 => {
-                            let min_idx = arr_steps[*arr_current_step][0] as usize;
-                            let j = arr_steps[*arr_current_step][1] as usize;
-
-                            if j + 1 == array.len() {
-                                selected_bars.push(min_idx + 1);
-                            } else {
-                                selected_bars.push(j + 1);
-                            }
-
-                            *green_bar = min_idx;
-
-                            if j + 1 < array.len() && array[j + 1] < array[min_idx] {
-                                *green_bar = j + 1;
-                                selected_bars.push(min_idx);
-                            }
-
-                            if array[j] < array[min_idx] {
-                                array.swap(min_idx, j);
-                            }
+                        algorithms::Step::Swap(i, j) => {
+                            array.swap(i, j);
+                            green_bars.push(i);
+                            green_bars.push(j);
                         }
-                        2 => {
-                            let j = arr_steps[*arr_current_step][0] as usize;
-                            array.swap(j, j - 1);
-                            selected_bars.push(j - 1);
-                        }
-                        3 => {
-                            let step = &merge_steps[*arr_current_step];
-                            match step {
-                                algorithms::MergeStep::Compare(i) => {
-                                    selected_bars.push(*i);
+                        algorithms::Step::Merge(start, mid, end) => {
+                            let mut left = array[start..=mid].to_vec();
+                            let mut right = array[mid + 1..=end].to_vec();
+                            let mut merged = vec![];
+
+                            left.push(isize::MAX);
+                            right.push(isize::MAX);
+
+                            let mut i = 0;
+                            let mut j = 0;
+
+                            for k in start..=end {
+                                if left[i] <= right[j] {
+                                    merged.push(left[i]);
+                                    i += 1;
+                                } else {
+                                    merged.push(right[j]);
+                                    j += 1;
                                 }
-
-                                algorithms::MergeStep::Merge(start, mid, end) => {
-                                    let mut left = array[*start..=*mid].to_vec();
-                                    let mut right = array[*mid + 1..=*end].to_vec();
-                                    let mut i = 0;
-                                    let mut j = 0;
-
-                                    left.push(isize::MAX);
-                                    right.push(isize::MAX);
-
-                                    for k in *start..=*end {
-                                        if left[i] <= right[j] {
-                                            array[k] = left[i];
-                                            i += 1;
-                                        } else {
-                                            array[k] = right[j];
-                                            j += 1;
-                                        }
-                                    }
-                                }
+                                array[k] = merged[k - start];
                             }
                         }
-                        4 => {}
-                        5 => {}
-                        _ => (),
                     }
 
                     *last_sort_time = now;
-                    match *algorithm {
-                        0 | 1 | 2 => {
-                            if *arr_current_step < arr_steps.len() - 1 {
-                                *arr_current_step += 1;
-                            } else {
-                                *running = false;
-                                *sorted = true;
-                                *arr_current_step = 0;
-                                break;
-                            }
-                        }
-                        3 => {
-                            if *arr_current_step < merge_steps.len() - 1 {
-                                *arr_current_step += 1;
-                            } else {
-                                *running = false;
-                                *sorted = true;
-                                *arr_current_step = 0;
-                                break;
-                            }
-                        }
-                        _ => (),
+                    if arr_steps.is_empty() {
+                        *running = false;
+                        *sorted = true;
+                        break;
                     }
                 }
             }
@@ -319,18 +264,25 @@ impl eframe::App for TemplateApp {
                 ui.add_enabled_ui(!*running, |ui| {
                     if ui.button("Run").clicked() && !*sorted {
                         *running = true;
-                        selected_bars.clear();
-                        let mut new_steps = Vec::new();
-                        let mut new_merge_steps: Vec<algorithms::MergeStep> = Vec::new();
+                        let mut new_steps: VecDeque<algorithms::Step> = VecDeque::new();
                         match *algorithm {
-                            0 => algorithms::bubble_sort(array.as_mut_slice(), &mut new_steps),
-                            1 => algorithms::selection_sort(array.as_mut_slice(), &mut new_steps),
-                            2 => algorithms::insertion_sort(array.as_mut_slice(), &mut new_steps),
+                            0 => algorithms::bubble_sort(
+                                array.to_owned().as_mut_slice(),
+                                &mut new_steps,
+                            ),
+                            1 => algorithms::selection_sort(
+                                array.to_owned().as_mut_slice(),
+                                &mut new_steps,
+                            ),
+                            2 => algorithms::insertion_sort(
+                                array.to_owned().as_mut_slice(),
+                                &mut new_steps,
+                            ),
                             3 => algorithms::merge_sort(
                                 array.to_owned().as_mut_slice(),
                                 0,
                                 array.len() - 1,
-                                &mut new_merge_steps,
+                                &mut new_steps,
                             ),
                             4 => {}
                             5 => {}
@@ -338,9 +290,6 @@ impl eframe::App for TemplateApp {
                         }
 
                         *arr_steps = new_steps;
-                        merge_steps.clear();
-                        merge_steps.extend(new_merge_steps);
-                        *arr_current_step = 0;
                     }
 
                     if ui.button("Shuffle").clicked() {
@@ -409,16 +358,10 @@ impl eframe::App for TemplateApp {
                 for bar in selected_bars.iter() {
                     bars[*bar].fill = red_light;
                     bars[*bar].stroke.color = red;
-                    bars[*bar].stroke.width = stroke_width;
                 }
-
-                match *algorithm {
-                    1 => {
-                        bars[*green_bar].fill = green_light;
-                        bars[*green_bar].stroke.color = green;
-                        bars[*green_bar].stroke.width = stroke_width;
-                    }
-                    _ => (),
+                for bar in green_bars.iter() {
+                    bars[*bar].fill = green_light;
+                    bars[*bar].stroke.color = green;
                 }
             }
 
