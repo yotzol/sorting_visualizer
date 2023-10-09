@@ -111,3 +111,43 @@ pub fn quick_sort(arr: &mut [isize], steps: &mut VecDeque<Step>) {
         }
     }
 }
+
+pub fn heapify(arr: &mut [isize], n: usize, i: usize, steps: &mut VecDeque<Step>) {
+    let mut largest = i;
+    let left = 2 * i + 1;
+    let right = 2 * i + 2;
+
+    if left < n {
+        steps.push_back(Step::Compare(largest, left));
+        if arr[left] > arr[largest] {
+            largest = left;
+        }
+    }
+
+    if right < n {
+        steps.push_back(Step::Compare(largest, right));
+        if arr[right] > arr[largest] {
+            largest = right;
+        }
+    }
+
+    if largest != i {
+        arr.swap(i, largest);
+        steps.push_back(Step::Swap(i, largest));
+        heapify(arr, n, largest, steps);
+    }
+}
+
+pub fn heap_sort(arr: &mut [isize], steps: &mut VecDeque<Step>) {
+    let n = arr.len();
+
+    for i in (0..n / 2).rev() {
+        heapify(arr, n, i, steps);
+    }
+
+    for i in (0..n).rev() {
+        arr.swap(0, i);
+        steps.push_back(Step::Swap(0, i));
+        heapify(arr, i, 0, steps);
+    }
+}
