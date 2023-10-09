@@ -225,8 +225,11 @@ impl eframe::App for TemplateApp {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.add(
-                        egui::Slider::new(array_size, 2..=if *algorithm < 3 { 1024 } else { 4096 })
-                            .text(""),
+                        egui::Slider::new(
+                            array_size,
+                            2..=if *algorithm < 3 { 1024 } else { 16384 },
+                        )
+                        .text(""),
                     );
 
                     if ui.button("Restore").clicked() {
@@ -377,6 +380,7 @@ impl eframe::App for TemplateApp {
                 .allow_drag(false)
                 .allow_zoom(false)
                 .allow_scroll(false)
+                .allow_boxed_zoom(false)
                 .show_axes([false; 2])
                 .show_x(false)
                 .show_y(false)
