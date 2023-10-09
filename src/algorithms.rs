@@ -77,3 +77,37 @@ pub fn merge_sort(arr: &mut [isize], start: usize, end: usize, steps: &mut VecDe
         merge(arr, start, mid, end, steps);
     }
 }
+
+pub fn partition(arr: &mut [isize], start: usize, end: usize, steps: &mut VecDeque<Step>) -> usize {
+    let pivot = arr[end];
+    let mut i = start;
+
+    for j in start..end {
+        steps.push_back(Step::Compare(j, end));
+        if arr[j] < pivot {
+            arr.swap(i, j);
+            steps.push_back(Step::Swap(i, j));
+            i += 1;
+        }
+    }
+
+    arr.swap(i, end);
+    steps.push_back(Step::Swap(i, end));
+
+    i
+}
+
+pub fn quick_sort(arr: &mut [isize], steps: &mut VecDeque<Step>) {
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    stack.push((0, arr.len() - 1));
+
+    while let Some((start, end)) = stack.pop() {
+        if start < end {
+            let pivot = partition(arr, start, end, steps);
+            if pivot > 0 {
+                stack.push((start, pivot - 1));
+            }
+            stack.push((pivot + 1, end));
+        }
+    }
+}

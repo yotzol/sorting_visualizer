@@ -216,9 +216,9 @@ impl eframe::App for TemplateApp {
                 }
 
                 ui.radio_value(algorithm, 3, "Merge Sort");
+                ui.radio_value(algorithm, 4, "Quick Sort");
 
                 ui.add_enabled_ui(false, |ui| {
-                    ui.radio_value(algorithm, 4, "Quick Sort");
                     ui.radio_value(algorithm, 5, "Heap Sort");
                 });
 
@@ -267,6 +267,8 @@ impl eframe::App for TemplateApp {
                 ui.add_enabled_ui(!*running, |ui| {
                     if ui.button("Run").clicked() && !*sorted {
                         *running = true;
+                        selected_bars.clear();
+
                         let mut new_steps: VecDeque<algorithms::Step> = VecDeque::new();
                         match *algorithm {
                             0 => algorithms::bubble_sort(
@@ -287,7 +289,10 @@ impl eframe::App for TemplateApp {
                                 array.len() - 1,
                                 &mut new_steps,
                             ),
-                            4 => {}
+                            4 => algorithms::quick_sort(
+                                array.to_owned().as_mut_slice(),
+                                &mut new_steps,
+                            ),
                             5 => {}
                             _ => (),
                         }
