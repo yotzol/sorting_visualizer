@@ -380,6 +380,7 @@ impl eframe::App for TemplateApp {
                 .allow_drag(false)
                 .allow_zoom(false)
                 .allow_scroll(false)
+                .allow_boxed_zoom(false)
                 .show_axes([false; 2])
                 .show_x(false)
                 .show_y(false)
