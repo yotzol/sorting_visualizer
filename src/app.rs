@@ -217,10 +217,7 @@ impl eframe::App for TemplateApp {
 
                 ui.radio_value(algorithm, 3, "Merge Sort");
                 ui.radio_value(algorithm, 4, "Quick Sort");
-
-                ui.add_enabled_ui(false, |ui| {
-                    ui.radio_value(algorithm, 5, "Heap Sort");
-                });
+                ui.radio_value(algorithm, 5, "Heap Sort");
 
                 ui.separator();
 
@@ -293,7 +290,10 @@ impl eframe::App for TemplateApp {
                                 array.to_owned().as_mut_slice(),
                                 &mut new_steps,
                             ),
-                            5 => {}
+                            5 => algorithms::heap_sort(
+                                array.to_owned().as_mut_slice(),
+                                &mut new_steps,
+                            ),
                             _ => (),
                         }
 
